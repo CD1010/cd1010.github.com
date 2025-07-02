@@ -1,1 +1,256 @@
-You have arrived.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clover OAuth Handler</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .token-display {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #155724;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Clover OAuth Token Handler</h1>
+        <div id="status"></div>
+        <div id="tokenDisplay"></div>
+        <div id="actions" style="display: none;">
+            <button onclick="copyToClipboard('access_token')">Copy Access Token</button>
+            <button onclick="copyToClipboard('refresh_token')">Copy Refresh Token</button>
+            <button onclick="copyAllTokens()">Copy All Data</button>
+        </div>
+    </div>
+
+    <script>
+        // Global variables to store tokens
+        let tokenData = {};
+
+        function parseUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            
+            // Combine URL params and hash params (OAuth can use either)
+            const allParams = new URLSearchParams();
+            
+            // Add URL search params
+            for (const [key, value] of urlParams) {
+                allParams.append(key, value);
+            }
+            
+            // Add hash params (fragment)
+            for (const [key, value] of hashParams) {
+                allParams.append(key, value);
+            }
+            
+            return allParams;
+        }
+
+        function extractTokens() {
+            const params = parseUrlParams();
+            const statusDiv = document.getElementById('status');
+            const tokenDisplay = document.getElementById('tokenDisplay');
+            const actionsDiv = document.getElementById('actions');
+            
+            // Check for error first
+            const error = params.get('error');
+            if (error) {
+                const errorDescription = params.get('error_description') || 'Unknown error occurred';
+                statusDiv.innerHTML = `
+                    <div class="error">
+                        <strong>OAuth Error:</strong> ${error}<br>
+                        <strong>Description:</strong> ${errorDescription}
+                    </div>
+                `;
+                return;
+            }
+            
+            // Extract tokens and other relevant data
+            const accessToken = params.get('access_token');
+            const refreshToken = params.get('refresh_token');
+            const code = params.get('code');
+            const state = params.get('state');
+            const tokenType = params.get('token_type') || 'Bearer';
+            const expiresIn = params.get('expires_in');
+            
+            // Store in global object
+            tokenData = {
+                access_token: accessToken,
+                refresh_token: refreshToken,
+                code: code,
+                state: state,
+                token_type: tokenType,
+                expires_in: expiresIn
+            };
+            
+            if (accessToken || code) {
+                statusDiv.innerHTML = '<div class="success">Tokens extracted successfully!</div>';
+                
+                let displayHtml = '<h3>Extracted Data:</h3>';
+                
+                if (accessToken) {
+                    displayHtml += `
+                        <div>
+                            <strong>Access Token:</strong>
+                            <div class="token-display">${accessToken}</div>
+                        </div>
+                    `;
+                }
+                
+                if (refreshToken) {
+                    displayHtml += `
+                        <div>
+                            <strong>Refresh Token:</strong>
+                            <div class="token-display">${refreshToken}</div>
+                        </div>
+                    `;
+                }
+                
+                if (code) {
+                    displayHtml += `
+                        <div>
+                            <strong>Authorization Code:</strong>
+                            <div class="token-display">${code}</div>
+                        </div>
+                    `;
+                }
+                
+                if (state) {
+                    displayHtml += `
+                        <div>
+                            <strong>State:</strong>
+                            <div class="token-display">${state}</div>
+                        </div>
+                    `;
+                }
+                
+                if (tokenType) {
+                    displayHtml += `
+                        <div>
+                            <strong>Token Type:</strong>
+                            <div class="token-display">${tokenType}</div>
+                        </div>
+                    `;
+                }
+                
+                if (expiresIn) {
+                    displayHtml += `
+                        <div>
+                            <strong>Expires In:</strong>
+                            <div class="token-display">${expiresIn} seconds</div>
+                        </div>
+                    `;
+                }
+                
+                tokenDisplay.innerHTML = displayHtml;
+                actionsDiv.style.display = 'block';
+                
+                // Log to console for debugging
+                console.log('Clover OAuth Data:', tokenData);
+                
+            } else {
+                statusDiv.innerHTML = '<div class="error">No tokens found in URL. Make sure you accessed this page through the Clover OAuth flow.</div>';
+                
+                // Show all available parameters for debugging
+                const allParamsObj = {};
+                for (const [key, value] of params) {
+                    allParamsObj[key] = value;
+                }
+                
+                if (Object.keys(allParamsObj).length > 0) {
+                    tokenDisplay.innerHTML = `
+                        <h3>Available Parameters:</h3>
+                        <div class="token-display">${JSON.stringify(allParamsObj, null, 2)}</div>
+                    `;
+                }
+            }
+        }
+
+        function copyToClipboard(tokenType) {
+            const value = tokenData[tokenType];
+            if (value) {
+                navigator.clipboard.writeText(value).then(() => {
+                    alert(`${tokenType} copied to clipboard!`);
+                }).catch(err => {
+                    console.error('Failed to copy: ', err);
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = value;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    alert(`${tokenType} copied to clipboard!`);
+                });
+            }
+        }
+
+        function copyAllTokens() {
+            const jsonData = JSON.stringify(tokenData, null, 2);
+            navigator.clipboard.writeText(jsonData).then(() => {
+                alert('All token data copied to clipboard as JSON!');
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = jsonData;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('All token data copied to clipboard as JSON!');
+            });
+        }
+
+        // Run when page loads
+        window.addEventListener('load', extractTokens);
+    </script>
+</body>
+</html>
