@@ -99,6 +99,19 @@
             const tokenDisplay = document.getElementById('tokenDisplay');
             const actionsDiv = document.getElementById('actions');
             
+            // Debug: Show current URL and all parameters
+            console.log('Current URL:', window.location.href);
+            console.log('Search params:', window.location.search);
+            console.log('Hash params:', window.location.hash);
+            
+            // Show all parameters for debugging
+            const allParamsObj = {};
+            for (const [key, value] of params) {
+                allParamsObj[key] = value;
+                console.log(`Parameter: ${key} = ${value}`);
+            }
+            console.log('All extracted parameters:', allParamsObj);
+            
             // Check for error first
             const error = params.get('error');
             if (error) {
@@ -120,15 +133,16 @@
             const tokenType = params.get('token_type') || 'Bearer';
             const expiresIn = params.get('expires_in');
             
-            // Store in global object
-            tokenData = {
-                access_token: accessToken,
-                refresh_token: refreshToken,
-                code: code,
-                state: state,
-                token_type: tokenType,
-                expires_in: expiresIn
-            };
+            // Store in global object (filter out null/undefined values)
+            tokenData = {};
+            if (accessToken) tokenData.access_token = accessToken;
+            if (refreshToken) tokenData.refresh_token = refreshToken;
+            if (code) tokenData.code = code;
+            if (state) tokenData.state = state;
+            if (tokenType) tokenData.token_type = tokenType;
+            if (expiresIn) tokenData.expires_in = expiresIn;
+            
+            console.log('Final tokenData object:', tokenData);
             
             if (accessToken || code) {
                 statusDiv.innerHTML = '<div class="success">Tokens extracted successfully!</div>';
@@ -217,7 +231,7 @@
             const value = tokenData[tokenType];
             if (value) {
                 navigator.clipboard.writeText(value).then(() => {
-                    alert(`${tokenType} copied to clipboard!`);
+                    alert(`${tokenType.replace('_', ' ')} copied to clipboard!`);
                 }).catch(err => {
                     console.error('Failed to copy: ', err);
                     // Fallback for older browsers
@@ -227,8 +241,11 @@
                     textArea.select();
                     document.execCommand('copy');
                     document.body.removeChild(textArea);
-                    alert(`${tokenType} copied to clipboard!`);
+                    alert(`${tokenType.replace('_', ' ')} copied to clipboard!`);
                 });
+            } else {
+                alert(`${tokenType.replace('_', ' ')} not found or is empty!`);
+                console.log('Available tokenData:', tokenData);
             }
         }
 
