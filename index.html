@@ -12,6 +12,136 @@
             padding: 20px;
             background-color: #f5f5f5;
         }
+
+        async function fetchMerchantId() {
+            const accessToken = tokenData.access_token;
+            if (!accessToken) {
+                throw new Error('No access token available');
+            }
+
+            const response = await fetch('https://api.clover.com/v3/merchants', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch merchant info: ${response.status} ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            console.log('Merchant data:', data);
+            
+            // Return the first merchant ID (assuming single merchant)
+            if (data.elements && data.elements.length > 0) {
+                return data.elements[0].id;
+            } else {
+                throw new Error('No merchant found');
+            }
+        }
+
+        async function fetchPayments() {
+            const paymentsStatus = document.getElementById('paymentsStatus');
+            const paymentsTable = document.getElementById('paymentsTable');
+            const paymentsSection = document.getElementById('paymentsSection');
+            
+            if (!tokenData.access_token) {
+                alert('No access token available. Please complete OAuth flow first.');
+                return;
+            }
+
+            paymentsSection.style.display = 'block';
+            paymentsStatus.innerHTML = '<div class="loading">Fetching payments...</div>';
+            paymentsTable.innerHTML = '';
+
+            try {
+                // First get the merchant ID
+                const merchantId = await fetchMerchantId();
+                console.log('Merchant ID:', merchantId);
+
+                // Then fetch payments for this merchant
+                const response = await fetch(`https://api.clover.com/v3/merchants/${merchantId}/payments`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${tokenData.access_token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                console.log('Payments data:', data);
+
+                if (data.elements && data.elements.length > 0) {
+                    paymentsStatus.innerHTML = `<div class="success">Found ${data.elements.length} payments</div>`;
+                    displayPaymentsTable(data.elements);
+                } else {
+                    paymentsStatus.innerHTML = '<div class="error">No payments found for this merchant.</div>';
+                }
+
+            } catch (error) {
+                console.error('Error fetching payments:', error);
+                paymentsStatus.innerHTML = `<div class="error">Error fetching payments: ${error.message}</div>`;
+            }
+        }
+
+        function displayPaymentsTable(payments) {
+            const paymentsTable = document.getElementById('paymentsTable');
+            
+            let tableHtml = `
+                <table class="payments-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Amount</th>
+                            <th>Currency</th>
+                            <th>Status</th>
+                            <th>Created Date</th>
+                            <th>Card Type</th>
+                            <th>Last 4</th>
+                            <th>Employee</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            payments.forEach(payment => {
+                const amount = payment.amount ? (payment.amount / 100).toFixed(2) : 'N/A';
+                const currency = payment.currency || 'USD';
+                const status = payment.result || 'Unknown';
+                const createdDate = payment.createdTime ? new Date(payment.createdTime).toLocaleString() : 'N/A';
+                const cardType = payment.cardTransaction?.cardType || 'N/A';
+                const last4 = payment.cardTransaction?.last4 || 'N/A';
+                const employee = payment.employee?.name || 'N/A';
+                const result = payment.result || 'N/A';
+
+                tableHtml += `
+                    <tr>
+                        <td>${payment.id || 'N/A'}</td>
+                        <td>${amount}</td>
+                        <td>${currency}</td>
+                        <td>${status}</td>
+                        <td>${createdDate}</td>
+                        <td>${cardType}</td>
+                        <td>${last4}</td>
+                        <td>${employee}</td>
+                        <td>${result}</td>
+                    </tr>
+                `;
+            });
+
+            tableHtml += `
+                    </tbody>
+                </table>
+            `;
+
+            paymentsTable.innerHTML = tableHtml;
         .container {
             background: white;
             padding: 30px;
@@ -52,8 +182,31 @@
             cursor: pointer;
             margin: 5px;
         }
-        button:hover {
-            background: #0056b3;
+        .payments-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .payments-table th,
+        .payments-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .payments-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .payments-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .loading {
+            color: #007bff;
+            background: #e7f3ff;
+            border: 1px solid #b8daff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
         }
     </style>
 </head>
@@ -66,6 +219,13 @@
             <button onclick="copyToClipboard('access_token')">Copy Access Token</button>
             <button onclick="copyToClipboard('refresh_token')">Copy Refresh Token</button>
             <button onclick="copyAllTokens()">Copy All Data</button>
+            <button onclick="fetchPayments()">Fetch Payments</button>
+        </div>
+        
+        <div id="paymentsSection" style="display: none;">
+            <h3>Merchant Payments</h3>
+            <div id="paymentsStatus"></div>
+            <div id="paymentsTable"></div>
         </div>
     </div>
 
@@ -144,65 +304,72 @@
             
             console.log('Final tokenData object:', tokenData);
             
-            if (accessToken || code) {
+            // Always show what we found, even if no tokens
+            let displayHtml = '<h3>Extracted Data:</h3>';
+            let hasAnyData = false;
+            
+            if (accessToken) {
+                displayHtml += `
+                    <div>
+                        <strong>Access Token:</strong>
+                        <div class="token-display">${accessToken}</div>
+                    </div>
+                `;
+                hasAnyData = true;
+            }
+            
+            if (refreshToken) {
+                displayHtml += `
+                    <div>
+                        <strong>Refresh Token:</strong>
+                        <div class="token-display">${refreshToken}</div>
+                    </div>
+                `;
+                hasAnyData = true;
+            }
+            
+            if (code) {
+                displayHtml += `
+                    <div>
+                        <strong>Authorization Code:</strong>
+                        <div class="token-display">${code}</div>
+                    </div>
+                `;
+                hasAnyData = true;
+            }
+            
+            if (state) {
+                displayHtml += `
+                    <div>
+                        <strong>State:</strong>
+                        <div class="token-display">${state}</div>
+                    </div>
+                `;
+                hasAnyData = true;
+            }
+            
+            if (tokenType && tokenType !== 'Bearer') {
+                displayHtml += `
+                    <div>
+                        <strong>Token Type:</strong>
+                        <div class="token-display">${tokenType}</div>
+                    </div>
+                `;
+                hasAnyData = true;
+            }
+            
+            if (expiresIn) {
+                displayHtml += `
+                    <div>
+                        <strong>Expires In:</strong>
+                        <div class="token-display">${expiresIn} seconds</div>
+                    </div>
+                `;
+                hasAnyData = true;
+            }
+            
+            if (hasAnyData) {
                 statusDiv.innerHTML = '<div class="success">Tokens extracted successfully!</div>';
-                
-                let displayHtml = '<h3>Extracted Data:</h3>';
-                
-                if (accessToken) {
-                    displayHtml += `
-                        <div>
-                            <strong>Access Token:</strong>
-                            <div class="token-display">${accessToken}</div>
-                        </div>
-                    `;
-                }
-                
-                if (refreshToken) {
-                    displayHtml += `
-                        <div>
-                            <strong>Refresh Token:</strong>
-                            <div class="token-display">${refreshToken}</div>
-                        </div>
-                    `;
-                }
-                
-                if (code) {
-                    displayHtml += `
-                        <div>
-                            <strong>Authorization Code:</strong>
-                            <div class="token-display">${code}</div>
-                        </div>
-                    `;
-                }
-                
-                if (state) {
-                    displayHtml += `
-                        <div>
-                            <strong>State:</strong>
-                            <div class="token-display">${state}</div>
-                        </div>
-                    `;
-                }
-                
-                if (tokenType) {
-                    displayHtml += `
-                        <div>
-                            <strong>Token Type:</strong>
-                            <div class="token-display">${tokenType}</div>
-                        </div>
-                    `;
-                }
-                
-                if (expiresIn) {
-                    displayHtml += `
-                        <div>
-                            <strong>Expires In:</strong>
-                            <div class="token-display">${expiresIn} seconds</div>
-                        </div>
-                    `;
-                }
-                
                 tokenDisplay.innerHTML = displayHtml;
                 actionsDiv.style.display = 'block';
                 
@@ -212,17 +379,15 @@
             } else {
                 statusDiv.innerHTML = '<div class="error">No tokens found in URL. Make sure you accessed this page through the Clover OAuth flow.</div>';
                 
-                // Show all available parameters for debugging
-                const allParamsObj = {};
-                for (const [key, value] of params) {
-                    allParamsObj[key] = value;
-                }
-                
+                // Show all available parameters for debugging even when no tokens found
                 if (Object.keys(allParamsObj).length > 0) {
-                    tokenDisplay.innerHTML = `
-                        <h3>Available Parameters:</h3>
+                    displayHtml += `
+                        <h3>Available Parameters (for debugging):</h3>
                         <div class="token-display">${JSON.stringify(allParamsObj, null, 2)}</div>
                     `;
+                    tokenDisplay.innerHTML = displayHtml;
+                } else {
+                    tokenDisplay.innerHTML = '<div class="error">No URL parameters found at all.</div>';
                 }
             }
         }
